@@ -32,11 +32,12 @@ void setup(){
 void loop(){
   i2c_scan();
   if (val){
-    blink(LED_PIN, val);                  // show we transmitted
+    //blink(LED_PIN, val);                  // show we transmitted
+    if (val == 127){setup();}
     TinyWireS.send(val);
   }
   
-  delay(100);
+  tws_delay(10);
 }
 
 
@@ -48,6 +49,7 @@ void i2c_scan()
     cmd = TinyWireS.receive(); // receive byte as a character
     val = TinyWireS.receive();    // receive byte as an integer
   }
+  if (val == 22) {setup();}
 }
 
 
@@ -60,7 +62,7 @@ void loop2(){
     TinyWireS.send(byteRcvd);           // send it back to master
     blink(LED_PIN, 1);                  // show we transmitted
   }
-  delay(100);
+  delay(10);
 }
 
 

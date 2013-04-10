@@ -2,8 +2,8 @@
 
 USI TWI Slave driver.
 
-Created by Donald R. Blake
-donblake at worldnet.att.net
+Created by Donald R. Blake. donblake at worldnet.att.net
+Adapted by Jochen Toppe, jochen.toppe at jtoee.com
 
 ---------------------------------------------------------------------------------
 
@@ -28,28 +28,25 @@ Change Activity:
   16 Mar 2007  Created.
   27 Mar 2007  Added support for ATtiny261, 461 and 861.
   26 Apr 2007  Fixed ACK of slave address on a read.
-  25-sept-2011 Added attiny84 support -Frank van den Berg
+  04 Jul 2007  Fixed USISIF in ATtiny45 def
+  12 Dev 2009  Added callback functions for data requests
 
 ********************************************************************************/
 
 
-
 /********************************************************************************
-
                                     includes
-
 ********************************************************************************/
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
-#include "usiTwiSlave.h"
 
+#include "usiTwiSlave.h"
+//#include "../common/util.h"
 
 
 /********************************************************************************
-
                             device dependent defines
-
 ********************************************************************************/
 
 #if defined( __AVR_ATtiny2313__ )
@@ -65,12 +62,13 @@ Change Activity:
 #  define USI_OVERFLOW_VECTOR USI_OVERFLOW_vect
 #endif
 
-#if defined( __AVR_ATtiny84__ )
+#if defined(__AVR_ATtiny84__) | \
+     defined(__AVR_ATtiny44__)
 #  define DDR_USI             DDRA
 #  define PORT_USI            PORTA
 #  define PIN_USI             PINA
-#  define PORT_USI_SDA        PA6
-#  define PORT_USI_SCL        PA4
+#  define PORT_USI_SDA        PORTA6
+#  define PORT_USI_SCL        PORTA4
 #  define PIN_USI_SDA         PINA6
 #  define PIN_USI_SCL         PINA4
 #  define USI_START_COND_INT  USISIF
@@ -88,7 +86,7 @@ Change Activity:
 #  define PORT_USI_SCL        PB2
 #  define PIN_USI_SDA         PINB0
 #  define PIN_USI_SCL         PINB2
-#  define USI_START_COND_INT  USISIF //was USICIF jjg
+#  define USI_START_COND_INT  USISIF
 #  define USI_START_VECTOR    USI_START_vect
 #  define USI_OVERFLOW_VECTOR USI_OVF_vect
 #endif
@@ -234,7 +232,31 @@ Change Activity:
        ( 0x0 << USICNT0 ); \
 }
 
+#define USI_RECEIVE_CALLBACK() \
+{ \
+    if (usi_onReceiverPtr) \
+    { \
+        if (usiTwiDataInReceiveBuffer()) \
+        { \
+            usi_onReceiverPtr(usiTwiAmountDataInReceiveBuffer()); \
+        } \
+    } \
+}
 
+#define ONSTOP_USI_RECEIVE_CALLBACK() \
+{ \
+    if (USISR & ( 1 << USIPF )) \
+    { \
+        USI_RECEIVE_CALLBACK(); \
+    } \
+}
+
+
+#define USI_REQUEST_CALLBACK() \
+{ \
+    USI_RECEIVE_CALLBACK(); \
+    if(usi_onRequestPtr) usi_onRequestPtr(); \
+}
 
 /********************************************************************************
 
@@ -272,6 +294,9 @@ static uint8_t          txBuf[ TWI_TX_BUFFER_SIZE ];
 static volatile uint8_t txHead;
 static volatile uint8_t txTail;
 
+// data requested callback
+void (*_onTwiDataRequest)(void);
+
 
 
 /********************************************************************************
@@ -284,7 +309,11 @@ static volatile uint8_t txTail;
 
 // flushes the TWI buffers
 
-static void flushTwiBuffers(void)
+static
+void
+flushTwiBuffers(
+  void
+)
 {
   rxTail = 0;
   rxHead = 0;
@@ -304,8 +333,12 @@ static void flushTwiBuffers(void)
 
 // initialise USI for TWI slave mode
 
-void usiTwiSlaveInit( uint8_t ownAddress)
+void
+usiTwiSlaveInit(
+  uint8_t ownAddress
+)
 {
+
   flushTwiBuffers( );
 
   slaveAddress = ownAddress;
@@ -347,10 +380,21 @@ void usiTwiSlaveInit( uint8_t ownAddress)
 } // end usiTwiSlaveInit
 
 
+bool usiTwiDataInTransmitBuffer(void)
+{
+
+  // return 0 (false) if the receive buffer is empty
+  return txHead != txTail;
+
+} // end usiTwiDataInTransmitBuffer
+
 
 // put data in the transmission buffer, wait if buffer is full
 
-void usiTwiTransmitByte( uint8_t data)
+void
+usiTwiTransmitByte(
+  uint8_t data
+)
 {
 
   uint8_t tmphead;
@@ -371,9 +415,14 @@ void usiTwiTransmitByte( uint8_t data)
 
 
 
+
+
 // return a byte from the receive buffer, wait if buffer is empty
 
-uint8_t usiTwiReceiveByte(void)
+uint8_t
+usiTwiReceiveByte(
+  void
+)
 {
 
   // wait for Rx data
@@ -391,7 +440,10 @@ uint8_t usiTwiReceiveByte(void)
 
 // check if there is data in the receive buffer
 
-bool usiTwiDataInReceiveBuffer(void)
+bool
+usiTwiDataInReceiveBuffer(
+  void
+)
 {
 
   // return 0 (false) if the receive buffer is empty
@@ -399,6 +451,21 @@ bool usiTwiDataInReceiveBuffer(void)
 
 } // end usiTwiDataInReceiveBuffer
 
+uint8_t usiTwiAmountDataInReceiveBuffer(void)
+{
+    if (rxHead == rxTail)
+    {
+        return 0;
+    }
+    if (rxHead < rxTail)
+    {
+        // Is there a better way ?
+        return ((int8_t)rxHead - (int8_t)rxTail) + TWI_RX_BUFFER_SIZE;
+    }
+    return rxHead - rxTail;
+}
+ 
+ 
 
 
 /********************************************************************************
@@ -409,6 +476,16 @@ bool usiTwiDataInReceiveBuffer(void)
 
 ISR( USI_START_VECTOR )
 {
+
+  /*
+  // This triggers on second write, but claims to the callback there is only *one* byte in buffer
+  ONSTOP_USI_RECEIVE_CALLBACK();
+  */
+  /*
+  // This triggers on second write, but claims to the callback there is only *one* byte in buffer
+  USI_RECEIVE_CALLBACK();
+  */
+
   // set default starting conditions for new TWI package
   overflowState = USI_SLAVE_CHECK_ADDRESS;
 
@@ -428,7 +505,8 @@ ISR( USI_START_VECTOR )
   );
 
 
-  if ( !( PIN_USI & ( 1 << PIN_USI_SDA ) ) )  {
+  if ( !( PIN_USI & ( 1 << PIN_USI_SDA ) ) )
+  {
 
     // a Stop Condition did not occur
 
@@ -446,9 +524,10 @@ ISR( USI_START_VECTOR )
          ( 0 << USITC );
 
   }
-  else {
-
+  else
+  {
     // a Stop Condition did occur
+
     USICR =
          // enable Start Condition Interrupt
          ( 1 << USISIE ) |
@@ -472,6 +551,7 @@ ISR( USI_START_VECTOR )
        // set USI to sample 8 bits (count 16 external SCL pin toggles)
        ( 0x0 << USICNT0);
 
+
 } // end ISR( USI_START_VECTOR )
 
 
@@ -488,20 +568,29 @@ Only disabled when waiting for a new Start Condition.
 
 ISR( USI_OVERFLOW_VECTOR )
 {
-  switch ( overflowState )  {
+
+  switch ( overflowState )
+  {
+
     // Address mode: check address and send ACK (and next USI_SLAVE_SEND_DATA) if OK,
     // else reset USI
-    case USI_SLAVE_CHECK_ADDRESS:	
-      if ( ( USIDR == 0 ) || ( ( USIDR >> 1 ) == slaveAddress) )  {
-          if ( USIDR & 0x01 )  {
+    case USI_SLAVE_CHECK_ADDRESS:
+      if ( ( USIDR == 0 ) || ( ( USIDR >> 1 ) == slaveAddress) )
+      {
+         // callback
+         if(_onTwiDataRequest) _onTwiDataRequest();
+         if ( USIDR & 0x01 )
+        {
           overflowState = USI_SLAVE_SEND_DATA;
         }
-        else {
+        else
+        {
           overflowState = USI_SLAVE_REQUEST_DATA;
         } // end if
         SET_USI_TO_SEND_ACK( );
       }
-      else {
+      else
+      {
         SET_USI_TO_TWI_START_CONDITION_MODE( );
       }
       break;
@@ -509,7 +598,8 @@ ISR( USI_OVERFLOW_VECTOR )
     // Master write data mode: check reply and goto USI_SLAVE_SEND_DATA if OK,
     // else reset USI
     case USI_SLAVE_CHECK_REPLY_FROM_SEND_DATA:
-      if ( USIDR ) {
+      if ( USIDR )
+      {
         // if NACK, the master does not want more data
         SET_USI_TO_TWI_START_CONDITION_MODE( );
         return;
@@ -520,13 +610,17 @@ ISR( USI_OVERFLOW_VECTOR )
     // copy data from buffer to USIDR and set USI to shift byte
     // next USI_SLAVE_REQUEST_REPLY_FROM_SEND_DATA
     case USI_SLAVE_SEND_DATA:
+      USI_REQUEST_CALLBACK();
       // Get data from Buffer
-      if ( txHead != txTail ) {
+      if ( txHead != txTail )
+      {
         txTail = ( txTail + 1 ) & TWI_TX_BUFFER_MASK;
         USIDR = txBuf[ txTail ];
       }
-      else{
+      else
+      {
         // the buffer is empty
+        SET_USI_TO_READ_ACK( ); // This might be neccessary sometimes see http://www.avrfreaks.net/index.php?name=PNphpBB2&file=viewtopic&p=805227#805227
         SET_USI_TO_TWI_START_CONDITION_MODE( );
         return;
       } // end if
