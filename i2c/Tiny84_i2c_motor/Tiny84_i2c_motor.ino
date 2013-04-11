@@ -13,30 +13,69 @@
  */
 // http://playground.arduino.cc/Code/USIi2c
 
+/*
+
+CONTROL REV 1
+
+D0 - MTRA_1
+D1 - gnd
+D2 - gnd
+D3 - MTRA_2
+D4 -        SCL
+D5 - ENA_A 
+D6 -        SDA
+D7 - ENA_B
+D8 - MTRB_1
+D9 - nc
+D10- MTRB_2
+ */
 
 #include "TinyWireS.h"                  // wrapper class for I2C slave routines
 
 #define I2C_SLAVE_ADDR  0x26            // i2c slave address (38)
-#define LED_PIN         3              // ATtiny Pin ?
+
 int val;
 char cmd;
-boolean LED = false;
+
+int A = 0;
+int B = 1;
+int pins[] = {0, 1, 2, 3, 5, 7, 8, 10};
+int MTR[2][2] = {
+  {0, 3},
+  {8, 10}
+};
+int ENA[2] = {5, 7};
+int limit[2] = {100, 100};
+
 
 void setup(){
-  pinMode(LED_PIN, OUTPUT);             // for general DEBUG use
-  blink(LED_PIN, 2);                    // show it's alive
   TinyWireS.begin(I2C_SLAVE_ADDR);      // init I2C Slave mode
+  for(int pin = 0; pin < 8; pin++){
+    pinMode(pins[pin], OUTPUT);
+    digitalWrite(pins[pin], LOW);
+  }   
 }
 
+/*
+1 - mtr A fwd
+2 - mtr A back
+3 - mtr B fwd
+4 - mtr B back
+*/
 
 void loop(){
   i2c_scan();
   if (val){
-    //blink(LED_PIN, val);                  // show we transmitted
     if (val == 127){setup();}
-    TinyWireS.send(val);
-    digitalWrite(LED_PIN, LED);
-    LED = !LED;
+    if (cmd > 0 && cmd < 5){ // legit mtr command
+      if (cmd == 1){fwd(0, val);}
+      if (cmd == 2){back(0, val);}
+      if (cmd == 3){fwd(1, val);}
+      if (cmd == 4){back(1, val);}      
+    }
+    TinyWireS.send(cmd);
+    tws_delay(10);
+    TinyWireS.send(val);   
   }
   
   tws_delay(10);
@@ -55,19 +94,6 @@ void i2c_scan()
 }
 
 
-void loop2(){
-  byte byteRcvd = 0;
-  if (TinyWireS.available() == 2){           // got I2C input!
-    byteRcvd = TinyWireS.receive();     // get the byte from master
-    //blink(LED_PIN, byteRcvd);           // master must wait for this to finish before calling Wire.requestFrom
-    //byteRcvd += 10;                     // add 10 to what's received
-    TinyWireS.send(byteRcvd);           // send it back to master
-    blink(LED_PIN, 1);                  // show we transmitted
-  }
-  delay(10);
-}
-
-
 void blink(byte led, byte times){ // poor man's display
   if (times > 10){times = 0;}
   for (byte i=0; i< times; i++){
@@ -79,4 +105,36 @@ void blink(byte led, byte times){ // poor man's display
 }
 
 
+void fwd(int mtr, int val){
+  analogWrite(ENA[mtr], val);
+  //digitalWrite(ENA[mtr], HIGH);
+  if (mtr){
+    digitalWrite(MTR[mtr][0], HIGH);
+    digitalWrite(MTR[mtr][1], LOW);
+  }
+  else{
+    digitalWrite(MTR[mtr][1], HIGH);
+    digitalWrite(MTR[mtr][0], LOW);
+  }
+}
+
+
+void back(int mtr, int val){
+  analogWrite(ENA[mtr], val);
+  //digitalWrite(ENA[mtr], HIGH);
+  if (mtr){
+    digitalWrite(MTR[mtr][1], HIGH);
+    digitalWrite(MTR[mtr][0], LOW);
+  }
+  else{
+    digitalWrite(MTR[mtr][0], HIGH);
+    digitalWrite(MTR[mtr][1], LOW);
+  }
+}
+
+
+void off(int mtr){
+  digitalWrite(MTR[mtr][0], LOW);
+  digitalWrite(MTR[mtr][1], LOW);
+}
 
