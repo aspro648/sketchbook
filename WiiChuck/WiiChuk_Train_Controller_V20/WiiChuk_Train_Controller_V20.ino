@@ -67,7 +67,7 @@ AF_DCMotor motor(1, MOTOR12_2KHZ); // create motor #1
 byte accx,accy,accz,zbut,cbut,joyx,joyy,joyxMid; // hold Chuck readings
 int trainDir = FORWARD; // 1 = FORWARD, 2 = BACKWARD
 int throttle = 0;       // adjusted joystick reading
-int speedLimit = 100;   // max motor set speed (up to 255)
+int speedLimit = 100;   // max motor set speed (up to 255) [was 100]
 int speedSet = 0;       // current motor set speed
 int deadBand = 10;      // for joystick
 float curSpeed = 0;     // current motor speed
@@ -75,8 +75,8 @@ float memSpeed;         // remember speed if auto reversing
 float diff = 0;         // change in speed based on accel/momentum
 int drag = 30;          // lower = faster speed response
 int stallSpeed = 20;    // speed needed to start train movement
-int brakeDrag = 100;    // lower = slows faster, must be >0
-int rollDrag = 100;     // higher accelerates slower
+int brakeDrag = 50;    // lower = slows faster, must be >0 [was 100]
+int rollDrag = 25;     // higher accelerates slower [was 100]
 int cruise = false;     // cruise control to hold speed?
 int cruiseSpeed = 80;   // speed when in auto mode
 int warnSpeed = 0;      // speed if EOT warning
