@@ -1,6 +1,10 @@
 /*
-.
- */
+Hacking a 2005 model Furby!.
+Furby_v0 controls just the motor.
+
+
+
+*/
 
 // Pin 13 has an LED connected on most Arduino boards.
 // give it a name:

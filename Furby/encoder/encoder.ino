@@ -13,12 +13,12 @@ EncoderPin A for position, but it freed up an interrupt pin.
 
 
 #define encoder0PinA 2
-
 #define encoder0PinB 3
-
 volatile unsigned int encoder0Pos = 0;
 
 int led = 13;
+int mtrA_pos = 14;
+
 
 void setup() {
 
