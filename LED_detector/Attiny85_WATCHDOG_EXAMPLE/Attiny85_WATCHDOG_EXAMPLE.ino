@@ -1,4 +1,6 @@
 /*
+
+http://www.youtube.com/watch?v=Ob5fHhPDqvU
  * Watchdog Sleep Example 
  * Demonstrate the Watchdog and Sleep Functions
  * LED on digital pin 0
@@ -10,8 +12,6 @@
  * Modified on 5 Feb 2011 by InsideGadgets (www.insidegadgets.com)
  * to suit the ATtiny85 and removed the cbi( MCUCR,SE ) section 
  * in setup() to match the Atmel datasheet recommendations
- http://www.youtube.com/watch?v=Ob5fHhPDqvU
-
  */
 
 #include <avr/sleep.h>
